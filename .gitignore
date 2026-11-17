@@ -1,0 +1,9 @@
+*.o
+*.a
+*.so
+*.so.*
+*.pc
+/test/test
+/macos/anehwx
+__pycache__/
+.ruff_cache/

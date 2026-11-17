@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# make lint. Off: Annex K's _s functions, glibc's reserved _GNU_SOURCE, and style checks that fight the
+# kernel's C (short names, unbraced bodies, plain numbers).
+Checks: >
+  -*,bugprone-*,cert-*,clang-analyzer-*,misc-*,performance-*,portability-*,readability-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -bugprone-reserved-identifier,-cert-dcl37-c,-cert-dcl51-cpp,-cert-err33-c,
+  -bugprone-easily-swappable-parameters,-misc-include-cleaner,
+  -readability-identifier-length,-readability-magic-numbers,-readability-braces-around-statements,
+  -readability-isolate-declaration,-readability-function-cognitive-complexity
+WarningsAsErrors: '*'
+# apple_ane_accel.h is the kernel's header, copied as it is
+HeaderFilterRegex: '(^|/)ane\.h$'
