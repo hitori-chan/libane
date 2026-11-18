@@ -268,7 +268,8 @@ int ane_load(struct ane *dev, const char *path, struct ane_nn **out)
 	int fd, r;
 
 	*out = NULL;
-	fd = open(path, O_RDONLY | O_CLOEXEC);
+	/* a FIFO's open does not wait for a writer: the check below refuses it */
+	fd = open(path, O_RDONLY | O_CLOEXEC | O_NONBLOCK);
 	if (fd < 0)
 		return neg_errno();
 	if (fstat(fd, &st))
