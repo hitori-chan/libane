@@ -2,11 +2,11 @@
 
 The Apple Neural Engine (ANE) on Linux: a small C library and a Python (numpy) wrapper over the `apple-ane` accel driver. It loads a program that Apple's compiler built for the engine, maps the program's buffers and runs it.
 
-Status (0.1.0, 2026-11-17): tested on an M3 Max, the only engine the driver supports so far (H15). A convolution and three small networks give the same outputs as CoreML on the engine under macOS, value for value, as root and as an ordinary user.
+Status (0.2.0, 2026-11-18): tested on an M3 Max, the only engine the driver supports so far (H15). A convolution and three small networks give the same outputs as CoreML on the engine under macOS, value for value, as root and as an ordinary user, through the C library, the Python wrapper and [ONNX Runtime](#onnx-runtime).
 
 ## Requirements
 
-- A kernel with the `apple-ane` driver, which makes `/dev/accel/accelN`. The driver is not upstream: it is in my kernel fork ([hitori-chan/linux](https://github.com/hitori-chan/linux), branch `m3-wip`) and in `linux-asahi` from [my package repository](https://github.com/hitori-chan/PKGBUILDs) from r218, with a device tree that gives the engine its own IOMMUs.
+- A kernel with the `apple-ane` driver, which makes `/dev/accel/accelN`. The driver is not upstream: it is in my kernel fork ([hitori-chan/linux](https://github.com/hitori-chan/linux), branch `m3-wip`) and in `linux-asahi` from [my package repository](https://github.com/hitori-chan/PKGBUILDs) from r218, with a device tree that gives the engine its own IOMMUs. Threads that share one device need r221 or later: before it, under load, one thread's runs could fail with `-EALREADY`.
 - For an ordinary user: the driver's `user_programs` parameter (on by default), which lets a user load programs because the engine's memory access is confined to the caller's own buffers; and read-write access to the node (systemd's udev rules make accel nodes `0666`). Without the confinement, loading a program needs `CAP_SYS_ADMIN`.
 - A program: a `.hwx`, built on macOS by Apple's compiler from a CoreML model. There is no open compiler. `anehwx` ([below](#programs-anehwx)) compiles a model and writes its `.hwx`.
 - To build: a C compiler, `make` and the kernel's uAPI headers (`linux-api-headers`). The Python wrapper needs numpy.

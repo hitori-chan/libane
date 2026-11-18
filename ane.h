@@ -34,7 +34,7 @@
 extern "C" {
 #endif
 
-#define ANE_VERSION "0.1.0"
+#define ANE_VERSION "0.2.0"
 
 /* an open device: one DRM file, whose programs and buffers no other struct ane sees */
 struct ane;

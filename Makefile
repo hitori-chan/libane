@@ -9,7 +9,7 @@ ANE_CFLAGS = -std=gnu11 -Wall -Wextra -fPIC -idirafter /usr/include/drm
 PREFIX  ?= /usr/local
 LIBDIR  ?= $(PREFIX)/lib
 INCDIR  ?= $(PREFIX)/include
-VERSION  = 0.1.0
+VERSION  = 0.2.0
 SOVER    = 0
 NAME     = ane
 
