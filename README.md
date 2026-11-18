@@ -110,6 +110,31 @@ Several `Model`s can share one `ane.Device()`. A `Model`'s runs are serialised; 
 
 `out/` then holds `model.hwx`, its metadata `model.json`, and CoreML's outputs on the CPU and on the engine for one fixed input (`in.bin`, `out-cpu.bin`, `out-ane.bin`, float32) to compare libane's with. `h15g` is the M3 Max's engine. The compiler is one of macOS's private frameworks; the programs tested here come from macOS 27.2's.
 
+## ONNX Runtime
+
+`ort/` holds a plugin execution provider for ONNX Runtime 1.24 or later, `libonnxruntime_ane.so`, with libane built into it. It runs an ONNX model whose node is a program for the engine: an `EPContext` node (domain `com.microsoft`) with `source` set to `ane`. It runs no other operator, and does not compile; ONNX Runtime runs the rest of a model on another provider.
+
+```
+$ make ort                                        # ORT_INC=... where onnxruntime_c_api.h is
+# make install-ort PREFIX=/usr                    # /usr/lib/libonnxruntime_ane.so
+$ ort/ane-epctx.py out                            # out/model_ctx.onnx beside out/model.hwx
+$ ort/ane-epctx.py out out/embedded.onnx --embed  # the program inside the model
+```
+
+`ane-epctx.py` writes the model from `anehwx`'s output: one `EPContext` node with the inputs and outputs of `model.json`, typed `float32` (or `float16` with `--float16`). The program is a path relative to the model's directory (`embed_mode` 0), or with `--embed` its bytes are in the node. The node's inputs and outputs are the program's, in the order of their buffer index, or as the `ane_src_index` and `ane_dst_index` attributes give (from `model.json`'s `"index"` keys). The engine computes in `float16`; the provider converts `float32` tensors.
+
+```python
+import onnxruntime as ort
+
+ort.register_execution_provider_library("ane", "/usr/lib/libonnxruntime_ane.so")
+so = ort.SessionOptions()
+so.add_provider_for_devices([d for d in ort.get_ep_devices() if d.ep_name == "AneExecutionProvider"], {})
+sess = ort.InferenceSession("out/model_ctx.onnx", sess_options=so)
+y = sess.run(None, {"x": x})
+```
+
+The provider is `AneExecutionProvider` on an NPU device of its own (vendor ID `0x106B`): ONNX Runtime finds accel nodes by their PCI identity, which the engine's platform device has not. It is offered only where `ane_open()` succeeds. ONNX Runtime's `PREFER_NPU` policy picks it too. A program named by path is opened beneath the model's directory: neither `..` nor a symlink leads out of it, and it must be a regular file. A model loaded from memory that names its program by path needs the session option `ep.context_file_path`, whose directory then holds it. Session options `ep.AneExecutionProvider.device` (the node) and `ep.AneExecutionProvider.timeout_ms` (a run's, in ms, 3000 by default). A model's nodes are compiled already, so `ep.context_enable` is refused. A program's runs are serialised; programs run concurrently. The plugin built against newer headers still runs on ONNX Runtime 1.24.
+
 ## The engine's buffers
 
 The engine computes in float16. An input or output of shape `(…, w)` is `prod(shape[:-1])` rows of `w` float16 values, each row starting `size / rows` bytes after the last; the rest of a row is padding, zero on input. The Python wrapper does this layout; a C caller does it itself. It is verified for the 3-D shapes of convolutional models; other ranks and tilings are not.
@@ -120,6 +145,8 @@ The engine computes in float16. An input or output of shape `(…, w)` is `prod(
 $ make check MODELS="conv16 net3"
 $ make check SAN=1 MODELS=conv16
 $ make lint
+$ make check-ort MODELS="out ..."
+$ make check-ort SAN=1 MODELS="out ..."
 ```
 
 `make check` runs the C tests (`test/test.c`) and the Python tests (`test/test_ane.py`). A model directory holds a `model.hwx` and its `model.json`. Without an `apple-ane` node, or without models, only the checks that need neither run. With them, each program is checked for:
@@ -130,7 +157,7 @@ $ make lint
 - load-run-free cycles that leak no descriptor or memory;
 - runs from several threads at once.
 
-The Python tests use the first model. `SAN=1` builds the C tests with AddressSanitizer and UBSan. `make lint` runs clang-format, clang-tidy (`.clang-tidy`), `ruff format` and `ruff check` (`ruff.toml`).
+The Python tests use the first model. `make check-ort` tests the ONNX Runtime provider through `onnxruntime`'s and `onnx`'s Python packages: on each model directory with one input and one output that also holds `anehwx`'s `in.bin` and `out-ane.bin` (others are skipped), the program beside the model and in it, `float16` inputs and outputs, a model from memory, 50 sessions that leak no descriptor and four threads, each output equal to CoreML's on the engine; on each model directory, that broken models are refused: a program path out of the directory or through a symlink out of it, a FIFO, a buffer index the program has not, more inputs than the program's, an omitted input, a bad `timeout_ms` and `ep.context_enable`. `SAN=1` builds the C tests, and `make check-ort`'s provider as `ort/libonnxruntime_ane-san.so`, with AddressSanitizer and UBSan. `make lint` runs clang-format, clang-tidy (`.clang-tidy`), `ruff format` and `ruff check` (`ruff.toml`).
 
 ## About
 

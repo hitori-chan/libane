@@ -44,11 +44,38 @@ check: all test/test
 	test/test $(MODELS)
 	ANE_LIB=$(CURDIR)/lib$(NAME).so.$(VERSION) python3 test/test_ane.py $(firstword $(MODELS))
 
+# make ort [ORT_INC=...]: the ONNX Runtime plugin execution provider (ort/ane_ep.c), libane in it.
+# It needs ONNX Runtime's C headers (1.24 or later) only: the library hands it its API at load.
+ORT_INC ?= /usr/include/onnxruntime
+ORT_EP   = ort/libonnxruntime_$(NAME)$(if $(SAN),-san).so
+
+ort: $(ORT_EP)
+
+$(ORT_EP): ort/ane_ep.c ort/ane_ep.map $(NAME).c $(NAME).h apple_ane_accel.h
+	$(CC) $(ANE_CFLAGS) -fvisibility=hidden -I$(ORT_INC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) \
+	  $(LDFLAGS) -shared -Wl,--version-script=ort/ane_ep.map -o $@ ort/ane_ep.c $(NAME).c -lpthread
+
+# make check-ort [MODELS="dir..."] [SAN=1]: the EP through onnxruntime's Python package (and
+# onnx's). SAN=1 builds it with the sanitizers as ort/libonnxruntime_ane-san.so, preloaded into
+# Python, leaks unchecked (Python's) and memory unbounded (ASan's quarantine holds what is freed)
+ifdef SAN
+ORT_RUN = LD_PRELOAD=$$($(CC) -print-file-name=libasan.so) ASAN_OPTIONS=detect_leaks=0 ANE_ORT_SAN=1
+endif
+check-ort: $(ORT_EP)
+	ANE_ORT_EP=$(CURDIR)/$(ORT_EP) $(ORT_RUN) python3 test/test_ort.py $(MODELS)
+
 lint:
-	clang-format --dry-run --Werror $(NAME).c $(NAME).h test/test.c macos/anehwx.m
+	clang-format --dry-run --Werror $(NAME).c $(NAME).h test/test.c macos/anehwx.m ort/ane_ep.c
 	clang-tidy --quiet $(NAME).c test/test.c -- $(ANE_CFLAGS)
-	ruff format --check python test
-	ruff check python test
+	if [ -f $(ORT_INC)/onnxruntime_ep_c_api.h ]; then \
+	  clang-tidy --quiet ort/ane_ep.c -- $(ANE_CFLAGS) -I$(ORT_INC); fi
+	ruff format --check python test ort
+	ruff check python test ort
+
+install-ort: $(ORT_EP)
+	$(if $(SAN),$(error install-ort with SAN=1: the sanitized plugin is for tests))
+	install -d $(DESTDIR)$(LIBDIR)
+	install -m755 $(ORT_EP) $(DESTDIR)$(LIBDIR)/
 
 install: all
 	install -d $(DESTDIR)$(LIBDIR)/pkgconfig $(DESTDIR)$(INCDIR)
@@ -60,6 +87,6 @@ install: all
 	install -m644 $(NAME).h $(DESTDIR)$(INCDIR)/
 
 clean:
-	rm -f *.o *.a *.so *.so.* *.pc test/test
+	rm -f *.o *.a *.so *.so.* *.pc test/test ort/*.so
 
-.PHONY: all check lint install clean
+.PHONY: all check ort check-ort lint install install-ort clean
